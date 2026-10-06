@@ -57,7 +57,8 @@ music_start:	di                         ; 010C
 	ld a,IEN_RUN
 	out (MIEN),a
 	defs 16
-	ld hl,01A9h                            ; 0157
+	; SAPI: MZ: LD HL,01A9h (vector at 0038h); isr_entry acknowledges F2 first.
+	ld hl,isr_entry                        ; 0157
 	ld (L0039),hl                          ; 015A
 	ld a,0C3h                              ; 015D
 	ld (L0038),a                           ; 015F
@@ -87,9 +88,11 @@ isr:	di                                 ; 01A9
 	nop
 	ld a,00h                               ; 01B6
 ticks            equ $-1
-	inc a                                  ; 01B8
-	jr z,L01BE                             ; 01B9
-	ld (ticks),a                           ; 01BB
+	; SAPI: MZ: INC A + JR Z + LD (ticks),A counts the tick (isr_entry does it).
+	; The rest of the interrupt (the music) runs with interrupts enabled: a tick
+	; during it is counted by isr_entry, the music is not run twice.
+	ei
+	defs 5
 L01BE:	ld a,00h                         ; 01BE
 	or a                                   ; 01C0
 	jr z,L01E0                             ; 01C1

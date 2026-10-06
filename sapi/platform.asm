@@ -43,10 +43,14 @@ YMDATA:		equ 057h		; YM3812 data
 KSTB:		equ 001h		; P0-IN: D0 = keyboard STROBE (active low)
 KDATA:		equ 002h		; P1-IN: key code (inverted)
 
-; Interrupt: the MZ-800 game reloads 8253 counter 2 with 11 counts of
-; 208.6 us in each interrupt (2.295 ms, 436 Hz). Here 82C54 counter 2
-; runs in mode 2 with 128 (55930.4 / 128 = 437 Hz, 2.289 ms) and sets F2.
-TICK_DIV:	equ 128
+; Interrupt: the MZ-800 game reloads 8253 counter 2 with 11 at the end of
+; each interrupt, so its period is 11 counts (1.84 ms) plus the time the
+; interrupt takes: measured in mz800emu 2.16 ms in the game, 2.33 ms on the
+; title. Here 82C54 counter 2 runs in mode 2 with 121 (55930.4 / 121 =
+; 462 Hz, 2.163 ms) and sets F2: the game runs as fast as on the MZ (the
+; title music is about 7 % faster). The period does not depend on the CPU
+; clock (2 or 4 MHz).
+TICK_DIV:	equ 121
 ; Counter 0 in mode 3 with 224: 249.7 Hz (4.005 ms) = one unit of the
 ; MZ delay loop at 3BA0h (200 x 71 T at 3.5469 MHz = 4.004 ms).
 UNIT_DIV:	equ 224
@@ -142,7 +146,7 @@ rst_vectors:
 	defb 018h
 	defw pal_write			; RST 18h: OUT (C),B with C = 0F0h (palette)
 	defb 038h
-	defw isr			; RST 38h: interrupt (also set by music_start)
+	defw isr_entry			; RST 38h: interrupt (also set by music_start)
 	defb 0
 
 ; ---- sapi_exit
@@ -170,14 +174,45 @@ sapi_exit:
 ; Interrupt (called from the original ISR at 01A9h)
 ; =====================================================================
 
-; ---- isr_hook
-; At the end of the interrupt: acknowledge F2, count the tick, keyboard.
-; The ISR saved all registers.
-isr_hook:
+; ---- isr_entry
+; RST 38h: acknowledge F2 and count the tick (ticks, at most FFh as in the
+; MZ code), then the original interrupt routine (01A9h), which runs the
+; music with interrupts enabled. An interrupt during the music only counts
+; its tick: at 2 MHz the music (an MML interpreter) can take longer than a
+; tick when new notes start, the game does not slow down then.
+isr_entry:
+	push af
 	ld a,080h			; clear F2
 	out (MIACK),a
+	ld a,(ticks)
+	inc a
+	jr z,.ie_max
+	ld (ticks),a
+.ie_max:
+	ld a,(isr_busy)
+	or a
+	jr nz,.ie_nested
+	inc a
+	ld (isr_busy),a
+	pop af
+	jp isr
+.ie_nested:
+	pop af
+	ei
+	reti
+
+isr_busy:
+	defb 0
+
+; ---- isr_hook
+; At the end of the interrupt (instead of the 8253 reload): keyboard.
+; The ISR saved all registers.
+isr_hook:
 	call kbd_poll
-	jp key_tick
+	call key_tick
+	xor a
+	ld (isr_busy),a
+	ret
 
 ; =====================================================================
 ; Delays
@@ -450,92 +485,65 @@ wf_planes:
 ; ---- put_tile
 ; Tile of C bytes x B lines at HL (MZ address), source DE: plane I
 ; (C * B bytes, line by line), then plane II. The MZ code writes plane I
-; with REPLACE (plane II = 0) and then plane II with XOR. Changes AF, BC,
-; DE, HL; DE ends after the plane II data.
+; with REPLACE (plane II = 0) and then plane II with XOR, so each CGA
+; byte is plane I | plane II of the tile. Changes AF, BC, DE, HL.
+; One pass: IX = plane I byte, IX + N = plane II byte (N = C * B, at most
+; 48), DE = CGA, H = page of the table.
 put_tile:
-	ld a,c
-	ld (pt_w),a
-	ld a,b
-	ld (pt_h),a
+	push ix
+	push de
+	pop ix
+	xor a				; N = C * B
+	ld e,b
+.ptl_n:
+	add a,c
+	dec e
+	jr nz,.ptl_n
+	ld (.ptl_p2+2),a		; displacement of LD L,(IX+N)
 	call cga_addr
-	push hl
-	call pt_plane1
-	pop hl
-	call pt_plane2
+	ex de,hl			; DE = CGA
+	ld a,LINE			; to the next line: LINE - 2 * C
+	sub c
+	sub c
+	ld (.ptl_step+1),a
+	ld h,pix_lo1/256
+.ptl_line:
+	push bc
+.ptl_byte:
+	ld l,(ix+0)			; plane I byte
+	ld a,(hl)			; pixels 0-3 as plane I (pix_lo1)
+.ptl_p2:
+	ld l,(ix+0)			; plane II byte (displacement N)
+	inc h
+	inc h
+	or (hl)				; | pixels 0-3 as plane II (pix_lo2)
+	ld (de),a
+	inc de
+	inc h
+	ld a,(hl)			; pixels 4-7 as plane II (pix_hi2)
+	ld l,(ix+0)
+	dec h
+	dec h
+	or (hl)				; | pixels 4-7 as plane I (pix_hi1)
+	ld (de),a
+	inc de
+	dec h
+	inc ix
+	dec c
+	jr nz,.ptl_byte
+	ld a,e
+.ptl_step:
+	add a,0
+	ld e,a
+	jr nc,.ptl_nc
+	inc d
+.ptl_nc:
+	pop bc
+	djnz .ptl_line
+	pop ix
 	ld a,022h			; WF as the MZ code leaves it
 	ld (wf),a
 	ret
-
-pt_plane1:				; (HL) = lo1[s], (HL+1) = hi1[s]
-	ld a,(pt_h)
-	ld (pt_r),a
-.p1_row:
-	push hl
-	ld a,(pt_w)
-	ld (pt_c),a
-.p1_col:
-	ld a,(de)
-	inc de
-	ld c,a
-	ld b,pix_lo1/256
-	ld a,(bc)
-	ld (hl),a
-	inc hl
-	inc b
-	ld a,(bc)
-	ld (hl),a
-	inc hl
-	ld a,(pt_c)
-	dec a
-	ld (pt_c),a
-	jr nz,.p1_col
-	pop hl
-	ld bc,LINE
-	add hl,bc
-	ld a,(pt_r)
-	dec a
-	ld (pt_r),a
-	jr nz,.p1_row
-	ret
-
-pt_plane2:				; (HL) |= lo2[s], (HL+1) |= hi2[s]
-	ld a,(pt_h)
-	ld (pt_r),a
-.p2_row:
-	push hl
-	ld a,(pt_w)
-	ld (pt_c),a
-.p2_col:
-	ld a,(de)
-	inc de
-	ld c,a
-	ld b,pix_lo2/256
-	ld a,(bc)
-	or (hl)
-	ld (hl),a
-	inc hl
-	inc b
-	ld a,(bc)
-	or (hl)
-	ld (hl),a
-	inc hl
-	ld a,(pt_c)
-	dec a
-	ld (pt_c),a
-	jr nz,.p2_col
-	pop hl
-	ld bc,LINE
-	add hl,bc
-	ld a,(pt_r)
-	dec a
-	ld (pt_r),a
-	jr nz,.p2_row
-	ret
-
-pt_w:	defb 0
-pt_h:	defb 0
-pt_r:	defb 0
-pt_c:	defb 0
 
 ; ---- put8x8, put16x8, put16x16, put24x16, put16x24
 ; The MZ tile routines (3BF1h, 3C1Ch, 3C4Dh, 3C8Dh, 3CD1h): HL = MZ
@@ -1465,6 +1473,22 @@ ym_tone:
 	ld e,(hl)
 	inc hl
 	ld d,(hl)
+	ld hl,ym_lastn			; the same divider as last time: nothing to do
+	ld b,0
+	add hl,bc
+	add hl,bc
+	ld a,(hl)
+	cp e
+	jr nz,.yt_new
+	inc hl
+	ld a,(hl)
+	cp d
+	ret z
+	dec hl
+.yt_new:
+	ld (hl),e
+	inc hl
+	ld (hl),d
 	call ym_fnum			; HL = F-number, B = block
 	ld a,c
 	jp ym_freq
@@ -1641,3 +1665,4 @@ psg_nctl:	defb 0
 psg_tones:	defw 0,0,0
 psg_vols:	defb 15,15,15,15
 ym_b0:		defb 0,0,0,0		; last B0h-B3h values
+ym_lastn:	defw 0FFFFh,0FFFFh,0FFFFh	; last dividers of channels 0-2
