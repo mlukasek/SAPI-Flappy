@@ -1490,11 +1490,28 @@ ym_tone:
 	inc hl
 	ld (hl),d
 	call ym_fnum			; HL = F-number, B = block
+	call ym_set_ultra
 	ld a,c
 	jp ym_freq
 
+; ---- ym_set_ultra
+; CY -> ym_ultra[C] (1 = the tone is too high, the channel stays silent).
+; Keeps BC, HL.
+ym_set_ultra:
+	push hl
+	sbc a,a
+	ld hl,ym_ultra
+	ld e,c
+	ld d,0
+	add hl,de
+	ld (hl),a
+	pop hl
+	ret
+
 ; ---- ym_fnum
-; DE = PSG divider N (0 = 1024) -> HL = F-number, B = block. Keeps C.
+; DE = PSG divider N (0 = 1024) -> HL = F-number, B = block, CY = 1 when
+; the tone is above the YM3812 (the game uses N = 1, 110 kHz, as a rest:
+; silent on the MZ). Keeps C.
 ym_fnum:
 	ld a,d
 	or e
@@ -1516,7 +1533,8 @@ ym_fnum:
 	ex de,hl
 	jr .yf_blk
 .yf_max:
-	ld hl,1023			; above the YM3812
+	ld hl,1023			; above the YM3812 (N < 18, over 6 kHz)
+	scf
 	ret
 .yf_div:
 	push bc
@@ -1552,6 +1570,7 @@ ym_fnum:
 	pop hl
 	pop ix
 	pop bc
+	or a
 	ret
 
 ; ---- ym_freq
@@ -1568,12 +1587,9 @@ ym_freq:
 	add a,a
 	or h
 	ld b,a				; block, F-number high
-	ld hl,psg_vols
 	ld e,c
 	ld d,0
-	add hl,de
-	ld a,(hl)
-	cp 00Fh
+	call ym_audible
 	jr z,.yq_off
 	set 5,b				; KEY ON
 .yq_off:
@@ -1610,12 +1626,12 @@ ym_volume:
 	ld a,(hl)			; carrier slot register 40h + x
 	call ym_write
 	pop de
-	ld a,e				; key on / off with the volume
-	ld hl,ym_b0
+	ld hl,ym_b0			; key on / off with the volume
 	add hl,de
 	ld b,(hl)
-	ld a,c
-	cp 00Fh
+	push hl
+	call ym_audible
+	pop hl
 	jr z,.yv_off
 	set 5,b
 	jr .yv_set
@@ -1630,6 +1646,24 @@ ym_volume:
 	add a,0B0h
 	ld e,b
 	jp ym_write
+
+; ---- ym_audible
+; Channel DE: NZ when it is to sound (attenuation below 15 and the tone
+; not too high). Changes AF, HL.
+ym_audible:
+	ld hl,ym_ultra
+	add hl,de
+	ld a,(hl)
+	or a
+	jr nz,.ya_no
+	ld hl,psg_vols
+	add hl,de
+	ld a,(hl)
+	cp 00Fh
+	ret
+.ya_no:
+	xor a
+	ret
 
 ; ---- ym_noise
 ; Noise channel: the rate (psg_nctl D1-D0: N = 16, 32, 64 or channel 2)
@@ -1651,6 +1685,8 @@ ym_noise:
 	ld de,(psg_tones+4)
 .yn_set:
 	call ym_fnum
+	ld c,3
+	call ym_set_ultra
 	ld a,3
 	jp ym_freq
 
@@ -1666,3 +1702,4 @@ psg_tones:	defw 0,0,0
 psg_vols:	defb 15,15,15,15
 ym_b0:		defb 0,0,0,0		; last B0h-B3h values
 ym_lastn:	defw 0FFFFh,0FFFFh,0FFFFh	; last dividers of channels 0-2
+ym_ultra:	defb 0,0,0,0		; 1 = tone too high for the YM3812
