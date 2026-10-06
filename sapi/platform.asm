@@ -1134,7 +1134,9 @@ key_map:
 	defb 00Dh,000h			; CR
 	defb 001h,079h, 080h,079h, 081h,079h	; F1: Ctrl+A, Consul ROL
 	defb 002h,069h, 082h,069h, 083h,069h	; F2: Ctrl+B, Consul COPY
-	defb 003h,059h			; F3: Ctrl+C
+	defb 003h,059h, 0D0h,059h	; F3: Ctrl+C, Consul key 61 (D0)
+	defb 006h,049h, 0D1h,049h	; F4: Ctrl+F, Consul key 62 (D1)
+	defb 007h,039h, 0D2h,039h	; F5: Ctrl+G, Consul key 63 (D2)
 	defb 07Fh,067h, 00Bh,067h	; DEL
 	defb '-',056h, '.',006h, ',',016h, '/',007h, ':',010h, ';',020h
 	defb '1',075h, '2',065h, '3',055h, '4',045h, '5',035h

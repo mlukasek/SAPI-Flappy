@@ -5,7 +5,9 @@
 L0000            equ 0000h
 L0038            equ 0038h
 L0039            equ 0039h
-; SAPI: map_buf is after the platform code (MZ: A000h)
+; SAPI: map_buf (MZ: A000h) is in the dead code of the MZ at 7332h-7977h (a sound
+; driver that the game never calls), between its variables L738D and L78EB.
+map_buf          equ 07390h
 map_buf_29       equ map_buf+29h
 ext_vectors_2    equ ext_vectors+2
 
@@ -9532,9 +9534,7 @@ stage_data:	defb 00h,00h,00h,0DFh,0FBh,0E0h,01h,00h,00h,00h,00h,00h,0Eh,0DDh,0E0
 	include colours.asm
 
 code_end:
-map_buf:	equ (code_end + 0FFh) & 0FF00h	; 880 bytes, MZ: A000h (not in the .COM)
-ram_end:	equ map_buf + 880
-	if ram_end > 0C000h
+	if code_end > 0C000h
 	.error "code over C000h (CGA-1V)"
 	endif
 
