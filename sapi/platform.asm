@@ -311,15 +311,14 @@ vw_hl:
 	push de
 	push hl
 	call wf_pair			; B, C = selected planes, D, E = all planes
-	ex (sp),hl
+	pop hl
+	push hl
 	call cga_addr
-	ex (sp),hl			; (SP) = CGA address
 	ld a,(wf)
 	rlca
 	rlca
 	rlca
 	and 007h
-	pop hl
 	jr z,.vw_single
 	dec a
 	jr z,.vw_xor

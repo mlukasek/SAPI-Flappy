@@ -5,7 +5,7 @@
 L0000            equ 0000h
 L0038            equ 0038h
 L0039            equ 0039h
-; SAPI: map_buf is in the RAM area at 1500h (MZ: A000h)
+; SAPI: map_buf is after the platform code (MZ: A000h)
 map_buf_29       equ map_buf+29h
 ext_vectors_2    equ ext_vectors+2
 
@@ -1078,10 +1078,12 @@ L07A3:	defb 10h,08h,00h,08h,00h,08h,00h,08h,00h,56h,30h,5Eh,52h,31h,00h,80h; 07A
 ; SAPI: RAM of the port (map, saved page 0, stack) and the pixel tables
 
 	org 1500h
-map_buf:	defs 880		; MZ: A000h
 page0_save:	defs 038h		; CP/M page 0 08h-3Fh (RST vectors)
 page0_end:	equ 040h
 ext_vectors:	defs 24			; MZ: FA00h
+; The stack goes down from 1C00h (1.7 KB). The MZ stack starts at FFFFh: the
+; game leaves subroutines with JP (poll_keys -> menu, title), held keys can
+; make it grow by about 24 bytes per round.
 stack_top:	equ 1C00h
 
 	org 1C00h
@@ -9527,7 +9529,9 @@ stage_data:	defb 00h,00h,00h,0DFh,0FBh,0E0h,01h,00h,00h,00h,00h,00h,0Eh,0DDh,0E0
 	include colours.asm
 
 code_end:
-	if code_end > 0C000h
+map_buf:	equ (code_end + 0FFh) & 0FF00h	; 880 bytes, MZ: A000h (not in the .COM)
+ram_end:	equ map_buf + 880
+	if ram_end > 0C000h
 	.error "code over C000h (CGA-1V)"
 	endif
 

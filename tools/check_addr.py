@@ -41,7 +41,7 @@ def main():
     missing = sorted(n for n in o if n not in s and n not in MOVED)
     print('%d symbols checked, %d moved, %d not in the SAPI build%s' %
           (len(o), bad, len(missing), (': ' + ' '.join(missing[:20])) if missing else ''))
-    print('code_end %04X' % s.get('code_end', 0))
+    print('code_end %04X, ram_end %04X' % (s.get('code_end', 0), s.get('ram_end', 0)))
     sys.exit(1 if bad else 0)
 
 
