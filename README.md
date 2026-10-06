@@ -28,12 +28,13 @@ Neveřejné repo: hra je chráněná autorským právem dB-SOFT.
 | konec, návrat do CP/M | | ESC | ESC |
 
 - Hra se ovládá tím zařízením, kterým se spustila (mezerník = klávesnice, palba = joystick), jako na MZ-800.
-- **Jedno stisknutí šipky = jeden krok o 8 bodů** (půl políčka). Klávesnice SAPI nehlásí puštění klávesy,
-  port proto drží klávesu stisknutou, dokud ji hra jednou nepřečte (nejvýš 570 ms). S autorepeatem (PC
-  v emulátoru) nebo joystickem jde postava plynule. Consul 262.3 autorepeat nemá: chůze = opakované ťukání
-  nebo joystick.
-- Ostatní klávesy (písmena, číslice, CR, F) jsou stisknuté 100 ms; rychle za sebou psané se řadí do fronty.
-- Hesla (Key word) jsou v originálu malými písmeny, port bere malá i velká.
+- **Jedno stisknutí šipky = jeden krok o 8 bodů** (půl políčka), stejně jako krátký stisk na MZ-800. Klávesnice
+  SAPI nehlásí puštění klávesy, port proto drží klávesu stisknutou, dokud ji hra nepřečte (viz Klávesnice).
+  S autorepeatem (PC v emulátoru) nebo joystickem jde postava plynule. Consul 262.3 autorepeat nemá: chůze
+  = opakované ťukání nebo joystick.
+- **Hesla (Key word) rozlišují velikost písmen** (např. `shiba`, `MegmI`, `STONE`, `hiki!`). Na MZ se malá
+  písmena a `!`–`)` píšou se SHIFT, port to dělá sám podle kódu klávesy SAPI.
+- Hesla ukazuje obrazovka po dokončení každé páté úrovně; heslo začne hru od úrovně, ke které patří.
 
 ## Spuštění
 
@@ -138,6 +139,8 @@ Neveřejné repo: hra je chráněná autorským právem dB-SOFT.
   Přerušení během hudby jen přičte tik (`isr_busy`), hudbu nespouští znovu. Hra tak nezpomalí.
 - Práce jednoho půlkroku hry: MZ 10 ms, SAPI 4 MHz 20 ms, 2 MHz 60 ms (rozpočet 110 ms). Obsluha přerušení
   zabere při 2 MHz asi 0,6 ms z 2,16 ms.
+- Start úrovně (od mezerníku po první krok, většinou čekání): MZ 3,4 s, SAPI 2 MHz 3,9 s, 4 MHz 3,1 s. Čekací
+  smyčky MZ (3BA0h) zdržuje přerušení, port čeká podle 82C54 přesně.
 
 ### Zvuk
 
@@ -151,10 +154,18 @@ Neveřejné repo: hra je chráněná autorským právem dB-SOFT.
 ### Klávesnice
 
 - Čte se v přerušení (`isr_hook`) i při každém čtení sloupce matice hrou (`kbd_row`). Postup jako MikroMon:
-  STROBE, kód, ACK, dokud STROBE nezhasne (nejvýš 256 čtení), ACK pryč.
-- `key_map`: kód SAPI → klávesa MZ (sloupec, bit). Šipky, mezerník a BREAK drží, dokud hra nepřečte vstup
-  (`input_hook` na 4FB5h, jednou za krok hry), nejvýš 570 ms; ostatní 100 ms. Mezi dvěma klávesami jsou
-  všechny 27 ms puštěné, další čekají ve frontě (4).
+  STROBE, kód, ACK, dokud STROBE nezhasne (nejvýš 256 čtení), ACK pryč. **STROBE se čte jen jednou:** pulz
+  Consulu (1 ms) může skončit hned po prvním čtení a emulátor (věrně) klávesu, kterou program viděl, neopakuje.
+- `key_map`: kód SAPI → klávesa MZ (sloupec, bit), malá písmena a `!`–`)` se SHIFT (sloupec 8, bit 0).
+- Klávesa je stisknutá, dokud ji hra nepřečte, a ještě 17 ms potom (nejvýš 570 ms):
+  - písmena, číslice, CR, F: přečte je `read_key` (volání `kbd_row` z 3990h–3B37h). Menu hesla čte klávesu
+    každých 60 ms a nečeká na puštění, delší stisk by dal písmeno dvakrát; menu ji ale čte dvakrát za kolo,
+    proto ještě 17 ms;
+  - šipky, mezerník, BREAK: přečte je `read_dir` (kromě volání z `wait_ticks` 2228h, to jen čeká na
+    puštění) nebo vstup hry (`input_hook` na 4FB5h, jednou za krok).
+- Mezi dvěma klávesami jsou všechny 27 ms puštěné, další čekají ve frontě (8).
+- Ověřeno v SAPIemu s Consul 262.3 (s 7474 i bez), EKL-1 při 2 i 4 MHz: start, chůze po krocích, BREAK, menu,
+  heslo `MegmI` → úroveň 6, ESC do CP/M.
 
 ## Vývoj a ověřování
 
@@ -179,8 +190,8 @@ Skripty si samy nabootují CP/M v SAPIemu (volba 1) a uloží stav `cpm` do pam�
 každém čekání na tiky (2217h, 2F48h), v `delay_2000` a ve smyčce „Hit SPACE KEY“. Skript vede oba emulátory
 od bodu k bodu, nastaví vstup podle scénáře a porovná roviny I a II MZ (regiony 8 a 9) s CGA. Scénáře:
 `title` (600 kroků), `play` (500), `clear` (dokončení úrovně přes zápis do 2246h), `menu` (konec hry, menu,
-rychlost, heslo, návod, demo, 900), `ending` (200. úroveň, závěr, 1700). **Všechny obrazovky shodné**
-(2026-10-06).
+rychlost, heslo, návod, demo, 900), `keyword` (heslo `MegmI`, úroveň 6 v obou), `ending` (200. úroveň, závěr,
+1700). **Všechny obrazovky shodné** (2026-10-06).
 
 **Disassembler:** `mkdis.py asm orig/flappy.asm` (pak `check_orig.py`). Kód hledá rekurzivní průchod od vstupů
 (`annot.ENTRIES`, mimo jiné cíle samomodifikovaného `DJNZ` na 3EADh a nepřímých volání 57CEh) a všechno, co
@@ -190,6 +201,7 @@ z `orig/flappy.asm` jednorázově, dál se edituje ručně.
 ## Pasti
 
 - **Lokální návěští pasma `.x` jsou globální** (dvakrát `.pw_end` = chyba překladu).
+- **Testy v reálném čase:** start úrovně trvá přes 3 s, stisk v té době hra ignoruje.
 - **Hra opouští podprogramy skokem:** `poll_keys` (2F66h) při CR skočí do menu, titulek se volá znovu.
   S drženou klávesou zásobník roste asi o 24 B na kolo (i na MZ, tam má celou paměť). Proto 1,7 KB zásobníku.
 - **Menu a „Hit SPACE KEY“ čekají bez čekání na tiky** (smyčky s `delay_2000` nebo jen čtení kláves). Pro
