@@ -108,13 +108,14 @@ class Emu:
     def regs(self):
         return self.data('get_registers')
 
-    def mem(self, addr, n):
+    def poke(self, addr, data):
+        if isinstance(data, int):
+            data = bytes([data])
+        return self.data('mem_write', {'addr': addr, 'data_hex': bytes(data).hex()})
+
+    def peek(self, addr, n=1):
         d = self.data('mem_read', {'addr': addr, 'len': n})
-        if isinstance(d, dict):
-            for k in ('data_b64', 'bytes_b64', 'b64', 'data'):
-                if k in d and isinstance(d[k], str):
-                    return base64.b64decode(d[k])
-        return d
+        return base64.b64decode(d['data_b64'])
 
     def press(self, key):
         return self.data('input_press_key', {'key': key})
