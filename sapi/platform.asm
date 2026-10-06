@@ -57,14 +57,14 @@ UNIT_DIV:	equ 224
 IEN_QUIET:	equ 028h		; gates G2 and G0, no interrupt
 IEN_RUN:	equ 0A8h		; and the F2 interrupt
 
-; Keys (see kbd_poll): a cursor key, space or BREAK stays down until
-; the game reads its input (input_hook) or KEY_MAX ticks; other keys
-; KEY_TIME ticks. Between two keys they are KEY_GAP ticks up.
-KEY_MIN:	equ 8			; 18 ms
+; Keys (see kbd_poll, kbd_row): the SAPI keyboards do not tell when a key
+; is let up. A key stays down until KEY_MIN ticks after the game first read
+; it (the menu reads a key twice in a round of 60 ms) or for KEY_MAX ticks;
+; between two keys all are up for KEY_GAP.
+KEY_MIN:	equ 8			; 17 ms
 KEY_MAX:	equ 250			; 570 ms
-KEY_TIME:	equ 44			; 100 ms
 KEY_GAP:	equ 12			; 27 ms
-KQ_SIZE:	equ 4
+KQ_SIZE:	equ 8
 
 ; Places in the original code used here
 char_blank:	equ L5C1D		; 8 bytes for a plane that is off (put_char)
@@ -1000,20 +1000,87 @@ plane2_test:
 
 ; ---- kbd_row
 ; Replaces OUT (0D0h),A + IN A,(0D1h): A = 8255 port A (low nibble =
-; matrix column 0-9) -> A = the column, active low. Keeps BC, DE, HL.
+; matrix column 0-9) -> A = the column, active low (column 8 D0 = SHIFT
+; with the key). Keeps BC, DE, HL.
+; A key the game reads is marked seen (key_tick lets it up then):
+; - letters, digits, CR, F: read by read_key (the call comes from
+;   3990h-3B37h; the keyword input reads every 60 ms, a longer key would
+;   give the letter twice);
+; - cursor keys, space, BREAK: read by read_dir, except from wait_ticks
+;   (2228h), which only waits for a release.
 kbd_row:
 	push bc
+	push hl
 	and 00Fh
 	ld b,a
 	call kbd_poll_di
+	ld c,0FFh
 	ld a,(key_col)
 	cp b
-	ld a,0FFh
-	jr nz,.kr_end
+	jr nz,.kr_shift
+	call kbd_seen
 	ld a,(key_bits)
 	cpl
+	ld c,a
+.kr_shift:
+	ld a,b
+	cp 8				; column 8: SHIFT (D0) with the key
+	jr nz,.kr_end
+	ld a,(key_col)
+	inc a
+	jr z,.kr_end
+	ld a,(key_shift)
+	or a
+	jr z,.kr_end
+	res 0,c
 .kr_end:
+	ld a,c
+	pop hl
 	pop bc
+	ret
+
+; the key of this column is down: seen? (SP+2: return into the game code,
+; SP+4: its caller)
+kbd_seen:
+	ld hl,6				; kbd_seen ret, HL, BC
+	add hl,sp
+	ld a,(key_flags)
+	rlca
+	jr c,.ks_dir
+	ld c,(hl)			; return address of kbd_row in 3990h-3B37h?
+	inc hl
+	ld a,(hl)
+	cp 03Ah
+	jr z,.ks_yes
+	cp 039h
+	jr z,.ks_39
+	cp 03Bh
+	ret nz
+	ld a,c				; 3Bxx: below 3B38h
+	cp 038h
+	ret nc
+	jr .ks_yes
+.ks_39:
+	ld a,c				; 39xx: from 3990h
+	cp 090h
+	ret c
+.ks_yes:
+	ld a,(key_seen)
+	or a
+	ret nz
+	inc a
+	ld (key_seen),a
+	ret
+.ks_dir:				; caller of read_dir (one more level)
+	inc hl
+	inc hl
+	ld a,(hl)
+	cp 02Bh
+	jr nz,.ks_yes
+	inc hl
+	ld a,(hl)
+	cp 022h
+	jr nz,.ks_yes
 	ret
 
 ; ---- joy_k4, joy_none
@@ -1061,23 +1128,21 @@ kbd_poll_di:
 	in a,(KSTB)
 	rrca
 	ret c				; STROBE inactive
-	push af
 	ld a,i				; P/V = IFF2
 	di
 	push af
-	call kbd_poll
+	call kbd_read
 	pop af
-	jp po,.kd_di
+	ret po
 	ei
-.kd_di:
-	pop af
 	ret
 
 kbd_poll:
 	in a,(KSTB)
 	rrca
 	ret c
-	push bc
+kbd_read:				; STROBE is active (read it only once: the
+	push bc				; Consul pulse can end just after it)
 	push hl
 	in a,(KDATA)
 	cpl
@@ -1096,12 +1161,23 @@ kbd_poll:
 	ld a,c
 	cp 01Bh				; ESC: back to CP/M
 	jp z,sapi_exit
-	cp 'a'
-	jr c,.kp_find
+	ld b,0				; B = 1: with SHIFT
+	cp 'a'				; lower case = SHIFT + letter (the MZ gives
+	jr c,.kp_sym			; upper case without SHIFT)
 	cp 'z'+1
 	jr nc,.kp_find
-	sub 020h			; lower case = upper case
+	sub 020h
+	inc b
+	jr .kp_find
+.kp_sym:
+	cp '!'				; ! " # $ % & ' ( ) = SHIFT + 1 to 9
+	jr c,.kp_find
+	cp ')'+1
+	jr nc,.kp_find
+	add a,010h
+	inc b
 .kp_find:
+	ld c,b
 	ld hl,key_map
 .kp_next:
 	ld b,(hl)
@@ -1113,6 +1189,8 @@ kbd_poll:
 	ld b,(hl)			; column, bit
 	inc hl
 	jr nz,.kp_next
+	ld a,c
+	ld (key_new_shift),a
 	ld a,b
 	call key_new
 .kp_end:
@@ -1138,7 +1216,7 @@ key_map:
 	defb 006h,049h, 0D1h,049h	; F4: Ctrl+F, Consul key 62 (D1)
 	defb 007h,039h, 0D2h,039h	; F5: Ctrl+G, Consul key 63 (D2)
 	defb 07Fh,067h, 00Bh,067h	; DEL
-	defb '-',056h, '.',006h, ',',016h, '/',007h, ':',010h, ';',020h
+	defb '-',056h, '.',006h, ',',016h, '/',007h, '?',017h, ':',010h, ';',020h
 	defb '1',075h, '2',065h, '3',055h, '4',045h, '5',035h
 	defb '6',025h, '7',015h, '8',005h, '9',026h, '0',036h
 	defb 'A',074h, 'B',064h, 'C',054h, 'D',044h, 'E',034h, 'F',024h
@@ -1149,7 +1227,8 @@ key_map:
 	defb 0FFh
 
 ; ---- key_new
-; A = key from key_map: press it now, again (refresh), or queue it.
+; A = key from key_map, key_new_shift = 1 with SHIFT: press it now, again
+; (refresh), or queue it.
 key_new:
 	push de
 	ld b,a
@@ -1160,6 +1239,10 @@ key_new:
 	jr z,.kn_free			; no key down
 	ld a,(key_code)
 	cp c
+	jr nz,.kn_queue
+	ld a,(key_shift)
+	ld hl,key_new_shift
+	cp (hl)
 	jr nz,.kn_queue
 	xor a				; the same key again (autorepeat)
 	ld (key_ticks),a
@@ -1185,19 +1268,25 @@ key_new:
 	ld d,0
 	ld hl,key_queue
 	add hl,de
+	add hl,de
 	ld (hl),b
+	inc hl
+	ld a,(key_new_shift)
+	ld (hl),a
 .kn_end:
 	pop de
 	ret
 
 ; ---- key_down
-; A = key from key_map: it is down from now.
+; A = key from key_map, key_new_shift: it is down from now.
 key_down:
 	ld (key_flags),a
 	and 07Fh
 	ld (key_code),a
 	and 00Fh
 	ld (key_col),a
+	ld a,(key_new_shift)
+	ld (key_shift),a
 	ld a,(key_code)			; bit number 0-7 -> mask
 	rrca
 	rrca
@@ -1229,20 +1318,12 @@ key_tick:
 	ld a,(hl)
 	cp KEY_MAX
 	jr nc,.kt_release
-	ld b,a
-	ld a,(key_flags)
-	rlca
-	jr nc,.kt_timed
-	ld a,b				; held until the game reads it
-	cp KEY_MIN
-	ret c
-	ld a,(key_seen)
+	ld hl,key_seen			; ticks since the game first read it
+	ld a,(hl)
 	or a
 	ret z
-	jr .kt_release
-.kt_timed:
-	ld a,b
-	cp KEY_TIME
+	inc (hl)
+	cp KEY_MIN
 	ret c
 .kt_release:
 	ld a,0FFh
@@ -1264,11 +1345,15 @@ key_tick:
 	dec a
 	ld (kq_count),a
 	ld hl,key_queue
-	ld a,(hl)
+	ld a,(hl)			; key
+	inc hl
+	ld b,(hl)			; SHIFT
 	push af
+	ld a,b
+	ld (key_new_shift),a
 	ld de,key_queue
 	inc hl
-	ld bc,KQ_SIZE-1
+	ld bc,KQ_SIZE*2-2
 	ldir
 	pop af
 	jp key_down
@@ -1277,8 +1362,15 @@ key_tick:
 ; Replaces XOR A + LD (5028h),A at the start of the input routine of the
 ; game (4FB5h), which runs once a game step: the key down was read.
 input_hook:
-	ld a,1
+	ld a,(key_col)
+	inc a
+	jr z,.ih_none
+	ld a,(key_seen)
+	or a
+	jr nz,.ih_none
+	inc a
 	ld (key_seen),a
+.ih_none:
 	xor a
 	ld (L5028),a
 	ret
@@ -1291,7 +1383,9 @@ key_ticks:	defb 0
 key_seen:	defb 0
 key_gap:	defb 0
 kq_count:	defb 0
-key_queue:	defs KQ_SIZE
+key_queue:	defs KQ_SIZE*2		; key_map byte, SHIFT
+key_shift:	defb 0			; 1 = SHIFT down with the key
+key_new_shift:	defb 0
 
 ; =====================================================================
 ; Sound: SN76489 -> YM3812

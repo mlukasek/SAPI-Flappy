@@ -32,7 +32,7 @@ TEST_PATCH = [
     (0x2217, 'C3B07F'),
     (0x393F, '3A807F 328F39 C9'),                     # read_dir: A = (7F80h)
     (0x3B3A, 'AF C9'),                                # read_joy: nothing
-    (0x3990, '3A827F B7 2808 3D 32827F 3A817F C9 AF C9'),  # read_key: (7F81h) for (7F82h) calls
+    (0x3990, '3A827F B7 2808 3D 32827F 3A817F C9 AF C9'),  # read_key: (7F81h) for (7F82h) calls (2: the menu reads twice a round)
     (0x3B82, 'E5 2A9C3B 29 3004 7D EE2D 6F 229C3B 7D E1 C9'),   # random: 16-bit LFSR
     (0x3B9C, '3412'),
     (0x2236, 'C3C07F'),                               # delay_2000: sync (stub per build)
@@ -69,6 +69,11 @@ SCEN = {
                      (300, 302, {'key': 0x53}), (306, 308, {'key': 0x48}), (312, 314, {'key': 0x49}),
                      (318, 320, {'key': 0x42}), (324, 326, {'key': 0x41}), (330, 332, {'key': 0x0D}),
                      (360, 362, {'key': 0x0D}), (500, 502, {'dir': 0x80}), (600, 640, {'dir': 0x10})],
+    'keyword': START + [(100, 100, {'poke': [(0x502F, 1)]}), (101, 103, {'dir': 0x02}),
+                        (180, 182, {'key': 0x0D}), (200, 202, {'key': 0x0D}), (220, 222, {'key': 0x0D}),
+                        (290, 292, {'key': 0xF1}), (300, 300, {'key': 0x4D}), (306, 306, {'key': 0x65}),
+                        (312, 312, {'key': 0x67}), (318, 318, {'key': 0x6D}), (324, 324, {'key': 0x49}),
+                        (340, 340, {'key': 0x0D}), (400, 402, {'dir': 0x80})],
     'fkeys': START + [(100, 102, {'key': 0xF2}), (150, 152, {'key': 0xF4}), (200, 202, {'key': 0xF0}),
                       (210, 260, {'dir': 0x08})],
 }
@@ -198,7 +203,7 @@ def main():
             if a.sp:
                 print('step %d SP sapi %s mz %04X' % (step, rs['registers']['sp'], rm['SP']))
             if k and any(f0 == step and 'key' in act for f0, f1, act in SCEN[a.scen]):
-                pokes += [(INPUT + 1, k), (INPUT + 2, 8)]
+                pokes += [(INPUT + 1, k), (INPUT + 2, 2)]
             for addr, val in [(INPUT, d)] + pokes:
                 s.poke(addr, val)
                 m.poke(addr, val)
@@ -217,6 +222,7 @@ def main():
             elif a.dump and step % 50 == 0:
                 cga_png(os.path.join(a.dump, 'ok_%04d.png' % step), cs)
         print('%d steps, %d with a different screen' % (step + 1, bad))
+        print('stage SAPI %d MZ %d' % (s.read(0x5C1B, 1)[0], m.e.peek(0x5C1B)[0]))
     finally:
         m.close()
 
