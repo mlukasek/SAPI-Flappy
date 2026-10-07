@@ -115,6 +115,15 @@ edituje ručně. Když se změní jména v `annot.py`, `orig/flappy.asm` se dá 
   `SAVE 188 C:FLAPPY.COM`, pak **`power off`** (obraz se zapisuje přes buffer), teprve pak zavřít.
 - 2026-10-07 je tam `C:FLAPPY.COM` z aktuálního překladu (kód beze změny od commitu s klávesnicí a SHIFT).
 
+## Vydání
+
+1. Číslo verze v `README.md` (Stav), poznámky `docs/release-notes/vX.Y.Z.md` (co je nového, soubory, MD5).
+2. `build.cmd`, kontrola `compare.py` (aspoň `play`, `menu`), commit.
+3. Tag `vX.Y.Z` (anotovaný), push větve i tagu.
+4. GitHub Release z tagu: text z poznámek, přílohy `FLAPPY.COM` (= `build\flappy.com`) a `FLAPPY.HEX`
+   (= `build\flappy.hex`). Bez `gh` jde přes REST API (`POST /repos/mlukasek/SAPI-Flappy/releases`, pak
+   upload na `uploads.github.com`) s tokenem z `git credential fill`.
+
 ## Pasti
 
 - **pasmo:** lokální návěští `.x` jsou globální; unární minus na začátku výrazu neguje celý zbytek; operand

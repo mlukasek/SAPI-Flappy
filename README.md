@@ -22,8 +22,9 @@ kameny, potvory a běží čas. Hra má 200 úrovní a hesla, kterými se dá za
   stejný jako u originálu v emulátoru MZ-800 (titulek, hra, smrt, konec hry, menu, heslo, dokončení úrovně,
   závěr).
 - Hra běží stejně rychle jako na MZ-800 při CPU 2 i 4 MHz.
-- Vyzkoušeno v emulátoru [SAPIemu](https://github.com/mlukasek/SAPIemu) 0.3.0-alpha. **Na skutečném SAPI-1
-  zatím ne.**
+- **Ověřeno na skutečném SAPI-1** (sestava V) i v emulátoru [SAPIemu](https://github.com/mlukasek/SAPIemu)
+  0.3.0-alpha.
+- Aktuální verze: **1.0.0** (hotové `FLAPPY.COM` je v [Releases](https://github.com/mlukasek/SAPI-Flappy/releases)).
 
 ## Co je potřeba
 
@@ -34,8 +35,9 @@ kameny, potvory a běží čas. Hra má 200 úrovní a hesla, kterými se dá za
 
 ## Spuštění
 
-1. Přeložit (Windows): `build.cmd` → `build\flappy.com` a `build\flappy.hex`. Potřebuje Python 3 a assembler
-   pasmo 0.5.3 (cesta v `build.cmd` nebo proměnná `PASMO`).
+1. Stáhnout `FLAPPY.COM` (nebo `FLAPPY.HEX`) z [Releases](https://github.com/mlukasek/SAPI-Flappy/releases),
+   nebo přeložit (Windows): `build.cmd` → `build\flappy.com` a `build\flappy.hex`. Překlad potřebuje Python 3
+   a assembler pasmo 0.5.3 (cesta v `build.cmd` nebo proměnná `PASMO`).
 2. Dostat program do SAPI, např. v SAPIemu Soubor → Nahrát program do paměti (`build\flappy.hex`) a v CP/M
    `SAVE 188 FLAPPY.COM`.
 3. Spustit `FLAPPY`. Konec klávesou ESC, hra se vrátí do CP/M.
@@ -78,7 +80,8 @@ kameny, potvory a běží čas. Hra má 200 úrovní a hesla, kterými se dá za
 | [docs/original.md](docs/original.md) | rozbor originálu pro MZ-800 |
 | [docs/vyvoj.md](docs/vyvoj.md) | vývoj: zdroje, nástroje, emulátory, ověřování, práce na jiném počítači, pasti |
 | [docs/rozhodnuti.md](docs/rozhodnuti.md) | rozhodnutí s důvody a poznatky z vývoje |
-| [docs/hw-otazky.md](docs/hw-otazky.md) | co ověřit na skutečném hardwaru |
+| [docs/hw-otazky.md](docs/hw-otazky.md) | ověření na skutečném hardwaru |
+| [docs/release-notes/v1.0.0.md](docs/release-notes/v1.0.0.md) | poznámky k vydání 1.0.0 |
 
 ## Autoři a poděkování
 

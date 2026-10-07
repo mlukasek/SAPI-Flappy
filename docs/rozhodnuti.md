@@ -79,3 +79,11 @@ Nové rozhodnutí vždy dopsat sem, s datem a důvodem.
   se starou historií (nepushovat).
 - Testy a ladění portu běží na **SAPIemu-release** (0.3.0-alpha), ne na vývojovém repu `SAPIemu`, které autor
   souběžně vyvíjí.
+- Zdrojáky (`orig/flappy.asm`, `sapi/flappy_sapi.asm`, obsahují celý program hry) zůstávají ve veřejném repu,
+  rozhodl autor (Flappy je klasika, volně dostupná). Necommituje se jen soubor originálu MZF.
+
+## Vydání 1.0.0 (2026-10-07)
+
+- Autor ověřil port na skutečném SAPI-1 v sestavě V (`docs/hw-otazky.md`).
+- Vydání 1.0.0: tag `v1.0.0`, GitHub Release s `FLAPPY.COM` a `FLAPPY.HEX` (`docs/release-notes/v1.0.0.md`).
+  Kód je stejný jako v portu ověřeném porovnáním s originálem (všechny scénáře `compare.py`).
