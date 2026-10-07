@@ -2,3 +2,7 @@ build/
 work/
 __pycache__/
 *.pyc
+
+# Original MZ-800 program (copyright dB-SOFT): local only, never commit
+SHARP/
+*.mzf
